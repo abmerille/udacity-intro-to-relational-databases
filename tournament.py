@@ -1,41 +1,54 @@
-#!/usr/bin/env python
-#
-# tournament.py -- implementation of a Swiss-system tournament
-#
+# Adam Merille
+# Written for Udacity Intro To Relational Databases, tournament project
+# Last Updated: June 30, 1017
 
 import psycopg2
 import bleach
 
 
-def connect():
-    """Connect to the PostgreSQL database.  Returns a database connection."""
-    return psycopg2.connect("dbname=tournament")
+def connect(database_name="tournament"):
+    """
+    Connect to the PostgreSQL database.
+    Returns a database connection and cursor.
+    """
+    try:
+        db = psycopg2.connect("dbname={}".format(database_name))
+        cursor = db.cursor()
+        return db, cursor
+    except:
+        print("Could not connect to database.")
 
 
 def deleteMatches():
     """Remove all the match records from the database."""
-    db = connect()
-    cur = db.cursor()
-    cur.execute("""delete from matches;""")
+    db, cur = connect()
+
+    query = "DELETE FROM matches;"
+    cur.execute(query)
+
     db.commit()
     db.close()
 
 
 def deletePlayers():
     """Remove all the player records from the database."""
-    db = connect()
-    cur = db.cursor()
-    cur.execute("""delete from players;""")
+    db, cur = connect()
+
+    query = "DELETE FROM players;"
+    cur.execute(query)
+
     db.commit()
     db.close()
 
 
 def countPlayers():
     """Returns the number of players currently registered."""
-    db = connect()
-    cur = db.cursor()
-    cur.execute("""select count(*) from players;""")
-    player_count = cur.fetchall()[0][0]
+    db, cur = connect()
+
+    query = "SELECT COUNT(*) FROM players;"
+    cur.execute(query)
+    player_count = cur.fetchone()[0]
+
     db.close()
     return player_count
 
@@ -49,11 +62,13 @@ def registerPlayer(name):
     Args:
       name: the player's full name (need not be unique).
     """
-    db = connect()
-    cur = db.cursor()
-    query = """insert into players(name)
-                values(%s);"""
-    cur.execute(query, (bleach.clean(name),))
+    db, cur = connect()
+
+    query = """INSERT INTO players(name)
+                VALUES(%s);"""
+    parameter = (bleach.clean(name),)
+    cur.execute(query, parameter)
+
     db.commit()
     db.close()
 
@@ -71,21 +86,11 @@ def playerStandings():
         wins: the number of matches the player has won
         matches: the number of matches the player has played
     """
-    db = connect()
-    cur = db.cursor()
-    # total_matches = """select count(matches.id) as total_matches
-    #                    from matches, players
-    #                    where matches.winner_id = players.id
-    #                    or matches.loser_id = players.id;"""
-    cur.execute("""select players.id, players.name, win_table.wins as wins,
-                    count(matches.id) as matches
-                   from players left join matches
-                   on matches.winner_id = players.id
-                   or matches.loser_id = players.id, win_table
-                   where win_table.id = players.id
-                   group by players.id, wins
-                   order by -wins;""")
+    db, cur = connect()
+
+    cur.execute("SELECT * FROM standings;")
     rows = cur.fetchall()
+
     db.close()
     return rows
 
@@ -97,11 +102,13 @@ def reportMatch(winner, loser):
       winner:  the id number of the player who won
       loser:  the id number of the player who lost
     """
-    db = connect()
-    cur = db.cursor()
-    query = """insert into matches(winner_id, loser_id)
-                values(%s, %s);"""
-    cur.execute(query, (winner, loser))
+    db, cur = connect()
+
+    query = """INSERT INTO matches(winner_id, loser_id)
+                VALUES(%s, %s);"""
+    parameter = (winner, loser)
+    cur.execute(query, parameter)
+
     db.commit()
     db.close()
 
@@ -121,11 +128,15 @@ def swissPairings():
         id2: the second player's unique id
         name2: the second player's name
     """
-    ranked_players = playerStandings()
-    first_half = [[player[0], player[1]] for player in ranked_players[::2]]
-    second_half = [[player[0], player[1]] for player in ranked_players[1::2]]
-    pairings = []
-    for i, player in enumerate(first_half):
-        pairings.append((player[0], player[1],
-                        second_half[i][0], second_half[i][1]))
+    # pull out data and split into two interleaving halves
+    ranked_players = [(player[0], player[1]) for player in playerStandings()]
+    left = ranked_players[::2]
+    right = ranked_players[1::2]
+
+    # create list of tuples with each player's tuple
+    zipped_pairs = zip(left, right)
+
+    # flatten paired tuples together
+    pairings = [sum(pair, ()) for pair in zipped_pairs]
+
     return pairings
