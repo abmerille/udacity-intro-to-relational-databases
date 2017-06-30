@@ -1,4 +1,3 @@
-====
 Swiss Tournament Project
 ====
 
